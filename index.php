@@ -206,7 +206,7 @@ final readonly class TransactionRepository
     {
         [$where, $params] = $this->where($f);
         $st = $this->db->prepare(
-            'SELECT t.id, t.vehicle_id, t.`date`, t.spidometer, t.note, v.jenis, v.type, v.nopol '
+            'SELECT t.id, t.vehicle_id, t.`date`, t.spidometer, t.nominal, t.note, v.jenis, v.type, v.nopol '
             . self::FROM . " $where ORDER BY t.`date` DESC, t.id DESC LIMIT :limit OFFSET :offset",
         );
         foreach ($params as $k => $v) {
@@ -219,10 +219,10 @@ final readonly class TransactionRepository
         return $st->fetchAll();
     }
 
-    public function create(int $vehicleId, string $date, int $km, ?string $note): void
+    public function create(int $vehicleId, string $date, int $km, int $nominal, ?string $note): void
     {
-        $this->db->prepare('INSERT INTO `transaction` (`date`, vehicle_id, spidometer, note) VALUES (?, ?, ?, ?)')
-            ->execute([$date, $vehicleId, $km, $note]);
+        $this->db->prepare('INSERT INTO `transaction` (`date`, vehicle_id, spidometer, nominal, note) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$date, $vehicleId, $km, $nominal, $note]);
     }
 
     public function exists(int $id): bool
@@ -233,10 +233,10 @@ final readonly class TransactionRepository
         return (bool) $st->fetchColumn();
     }
 
-    public function update(int $id, int $vehicleId, string $date, int $km, ?string $note): void
+    public function update(int $id, int $vehicleId, string $date, int $km, int $nominal, ?string $note): void
     {
-        $this->db->prepare('UPDATE `transaction` SET `date` = ?, vehicle_id = ?, spidometer = ?, note = ? WHERE id = ?')
-            ->execute([$date, $vehicleId, $km, $note, $id]);
+        $this->db->prepare('UPDATE `transaction` SET `date` = ?, vehicle_id = ?, spidometer = ?, nominal = ?, note = ? WHERE id = ?')
+            ->execute([$date, $vehicleId, $km, $nominal, $note, $id]);
     }
 
     public function delete(int $id): void
@@ -250,7 +250,7 @@ final readonly class TransactionRepository
 final class ServiceController
 {
     private const PER_PAGE = 15;
-    private const FIELDS = ['id', 'vehicle_id', 'jenis', 'type', 'nopol', 'date', 'spidometer', 'note'];
+    private const FIELDS = ['id', 'vehicle_id', 'jenis', 'type', 'nopol', 'date', 'spidometer', 'nominal', 'note'];
 
     public function __construct(
         private readonly PDO $db,
@@ -393,11 +393,16 @@ final class ServiceController
             $err['spidometer'] = 'Isi spidometer dengan angka 0 sampai 9.999.999 km.';
         }
 
+        $nominal = filter_var($old['nominal'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 999_999_999]]);
+        if ($nominal === false) {
+            $err['nominal'] = 'Isi nominal dengan angka 0 sampai 999.999.999.';
+        }
+
         if (mb_strlen($old['note']) > 500) {
             $err['note'] = 'Catatan maksimal 500 karakter.';
         }
 
-        return [$data + ['date' => $date, 'km' => $km, 'note' => $old['note'] ?: null], $err, $old];
+        return [$data + ['date' => $date, 'km' => $km, 'nominal' => $nominal, 'note' => $old['note'] ?: null], $err, $old];
     }
 
     private function normalizeNopol(string $raw): ?string
@@ -413,8 +418,8 @@ final class ServiceController
         try {
             $vehicleId = $d['vehicle_id'] ?? $this->vehicles->create($d['jenis'], $d['type'], $d['nopol']);
             $d['id']
-                ? $this->transactions->update($d['id'], $vehicleId, $d['date'], $d['km'], $d['note'])
-                : $this->transactions->create($vehicleId, $d['date'], $d['km'], $d['note']);
+                ? $this->transactions->update($d['id'], $vehicleId, $d['date'], $d['km'], $d['nominal'], $d['note'])
+                : $this->transactions->create($vehicleId, $d['date'], $d['km'], $d['nominal'], $d['note']);
             $this->db->commit();
         } catch (Throwable $e) {
             if ($this->db->inTransaction()) {
@@ -455,16 +460,21 @@ $btnGhost = 'inline-flex items-center justify-center rounded-lg border border-li
 $fieldError = static fn (string $k): string => isset($errors[$k])
     ? '<p data-err class="mt-1 text-sm text-red-700">' . e($errors[$k]) . '</p>'
     : '';
-$odo = static fn (int $km): string => '<span class="inline-flex items-baseline gap-1 whitespace-nowrap rounded-md bg-dash px-2.5 py-1 font-digit text-xl font-extrabold tabular-nums tracking-wide text-lamp">'
-    . number_format($km, 0, ',', '.') . '<span class="text-sm font-semibold text-lamp/70">km</span></span>';
+$odo = static fn (int $km): string => sprintf(
+    '<span class="inline-flex items-baseline gap-1 whitespace-nowrap rounded-md border border-lamp/30 bg-dash px-2.5 py-1 font-digit text-xl font-extrabold tabular-nums tracking-wide text-lamp shadow-[0_0_10px_rgba(232,164,0,0.15)]">'
+    . '%s<span class="font-sans text-xs font-bold text-lamp/70">km</span>'
+    . '</span>',
+    number_format($km, 0, ',', '.')
+);
+$rupiah = static fn (int $n): string => 'Rp' . number_format($n, 0, ',', '.');
 $btnEdit = 'rounded-md px-2.5 py-2 text-sm font-medium hover:bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink';
 $btnDelete = 'rounded-md px-2.5 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-700';
 $btnDanger = 'inline-flex items-center justify-center rounded-lg bg-red-700 px-5 py-2.5 font-semibold text-white hover:bg-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700';
 $actions = static fn (array $r): string => sprintf(
     '<div class="flex gap-1">'
-    . '<button type="button" data-edit data-id="%d" data-vehicle="%d" data-date="%s" data-km="%d" data-note="%s" class="%s">Ubah</button>'
+    . '<button type="button" data-edit data-id="%d" data-vehicle="%d" data-date="%s" data-km="%d" data-nominal="%d" data-note="%s" class="%s">Ubah</button>'
     . '<button type="button" data-delete data-id="%d" data-label="%s" class="%s">Hapus</button></div>',
-    $r['id'], $r['vehicle_id'], e($r['date']), $r['spidometer'], e($r['note']), $btnEdit,
+    $r['id'], $r['vehicle_id'], e($r['date']), $r['spidometer'], $r['nominal'], e($r['note']), $btnEdit,
     $r['id'], e($r['nopol'] . ', ' . tgl($r['date'])), $btnDelete,
 );
 ?>
@@ -555,7 +565,7 @@ $actions = static fn (array $r): string => sprintf(
                             </div>
                             <?= $odo((int) $r['spidometer']) ?>
                         </div>
-                        <p class="mt-2 text-sm text-muted"><?= e(tgl($r['date'])) ?></p>
+                        <p class="mt-2 text-sm text-muted"><?= e(tgl($r['date'])) ?> · <?= $rupiah((int) $r['nominal']) ?></p>
                         <?php if ($r['note']): ?>
                             <p class="mt-1 whitespace-pre-line break-words text-sm"><?= e($r['note']) ?></p>
                         <?php endif; ?>
@@ -573,6 +583,7 @@ $actions = static fn (array $r): string => sprintf(
                         <th class="px-4 py-3 font-medium">Nopol</th>
                         <th class="px-4 py-3 font-medium">Kendaraan</th>
                         <th class="px-4 py-3 text-right font-medium">Spidometer</th>
+                        <th class="px-4 py-3 text-right font-medium">Biaya</th>
                         <th class="px-4 py-3 font-medium">Catatan</th>
                         <th class="px-4 py-3"><span class="sr-only">Aksi</span></th>
                     </tr>
@@ -584,6 +595,7 @@ $actions = static fn (array $r): string => sprintf(
                             <td class="whitespace-nowrap px-4 py-3 font-semibold"><?= e($r['nopol']) ?></td>
                             <td class="px-4 py-3"><?= e($r['jenis']) ?> - <?= e($r['type']) ?></td>
                             <td class="px-4 py-3 text-right"><?= $odo((int) $r['spidometer']) ?></td>
+                            <td class="whitespace-nowrap px-4 py-3 text-right"><?= $rupiah((int) $r['nominal']) ?></td>
                             <td class="max-w-xs whitespace-pre-line break-words px-4 py-3"><?= e($r['note']) ?></td>
                             <td class="whitespace-nowrap px-4 py-3 text-right"><?= $actions($r) ?></td>
                         </tr>
@@ -705,6 +717,12 @@ $actions = static fn (array $r): string => sprintf(
         </div>
 
         <label class="block">
+            <span class="text-sm font-medium">Nominal (Rp)</span>
+            <input type="number" name="nominal" value="<?= e($old['nominal'] ?? '') ?>" min="0" max="999999999" step="1" inputmode="numeric" required placeholder="150000" class="<?= $input ?>">
+            <?= $fieldError('nominal') ?>
+        </label>
+
+        <label class="block">
             <span class="text-sm font-medium">Catatan</span>
             <textarea name="note" rows="3" maxlength="500" placeholder="Ganti oli, kampas rem depan…" class="<?= $input ?>"><?= e($old['note'] ?? '') ?></textarea>
             <?= $fieldError('note') ?>
@@ -760,6 +778,7 @@ $actions = static fn (array $r): string => sprintf(
         form.elements['nopol'].value = '';
         form.elements['date'].value = d.date ?? dlg.dataset.today;
         form.elements['spidometer'].value = d.km ?? '';
+        form.elements['nominal'].value = d.nominal ?? '';
         form.elements['note'].value = d.note ?? '';
         document.getElementById('modal-title').textContent = editing ? 'Ubah catatan servis' : 'Tambah catatan servis';
         document.getElementById('modal-submit').textContent = editing ? 'Simpan perubahan' : 'Simpan catatan';
