@@ -143,23 +143,39 @@ final readonly class VehicleRepository
 
     public function all(): array
     {
-        return $this->db->query('SELECT id, jenis, type, nopol FROM vehicle ORDER BY nopol')->fetchAll();
+        // Ditambahkan COUNT transaction untuk mengetahui apakah kendaraan punya riwayat servis
+        return $this->db->query(
+            'SELECT v.id, v.jenis, v.type, v.nopol, COUNT(t.id) as total_servis ' .
+            'FROM vehicle v LEFT JOIN `transaction` t ON t.vehicle_id = v.id ' .
+            'GROUP BY v.id ORDER BY v.nopol'
+        )->fetchAll();
     }
 
     public function exists(int $id): bool
     {
-        $st = $this->db->prepare('SELECT 1 FROM vehicle WHERE id = ?');
+        $st =$this->db->prepare('SELECT 1 FROM vehicle WHERE id = ?');
         $st->execute([$id]);
 
         return (bool) $st->fetchColumn();
     }
 
-    public function create(string $jenis, string $type, string $nopol): int
+    public function create(string $jenis, string $type, string$nopol): int
     {
         $this->db->prepare('INSERT INTO vehicle (jenis, type, nopol) VALUES (?, ?, ?)')
-            ->execute([$jenis, $type, $nopol]);
+            ->execute([$jenis, $type,$nopol]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    public function update(int $id, string$jenis, string $type, string$nopol): void
+    {
+        $this->db->prepare('UPDATE vehicle SET jenis = ?, type = ?, nopol = ? WHERE id = ?')
+            ->execute([$jenis,$type, $nopol,$id]);
+    }
+
+    public function delete(int $id): void
+    {
+        $this->db->prepare('DELETE FROM vehicle WHERE id = ?')->execute([$id]);
     }
 }
 
@@ -266,16 +282,69 @@ final class ServiceController
             exit('Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.');
         }
 
-        if (($_POST['action'] ?? '') === 'delete') {
-            $this->handleDelete();
-        } else {
-            $this->handleSave();
-        }
+        $action = $_POST['action'] ?? '';
+
+        match ($action) {
+            'delete'         => $this->handleDelete(),
+            'save_vehicle'   => $this->handleSaveVehicle(),
+            'delete_vehicle' => $this->handleDeleteVehicle(),
+            default          => $this->handleSave(),
+        };
 
         $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT) ?: 1;
         $qs = http_build_query($filter->toArray() + ($page > 1 ? ['page' => $page] : []));
         header('Location: ' . $_SERVER['SCRIPT_NAME'] . ($qs ? "?$qs" : ''), true, 303);
         exit;
+    }
+
+    private function handleSaveVehicle(): void
+    {
+        $id    = filter_var($_POST['vehicle_id'] ?? '', FILTER_VALIDATE_INT);
+        $jenis = $_POST['jenis'] ?? '';
+        $type  = trim($_POST['type'] ?? '');
+        $nopol = $this->normalizeNopol($_POST['nopol'] ?? '');
+
+        if (!in_array($jenis, JENIS_KENDARAAN, true) || $type === '' || $nopol === null) {
+            $_SESSION['flash'] = ['fail' => 'Data kendaraan tidak valid. Periksa Nopol dan Tipe.'];
+            return;
+        }
+
+        try {
+            if ($id && $this->vehicles->exists($id)) {
+                $this->vehicles->update($id, $jenis, $type, $nopol);
+                $_SESSION['flash'] = ['ok' => 'Data kendaraan berhasil diperbarui.'];
+            }
+        } catch (PDOException $e) {
+            if (($e->errorInfo[1] ?? 0) === 1062) {
+                $_SESSION['flash'] = ['fail' => 'Nopol sudah terdaftar pada kendaraan lain.'];
+            } else {
+                error_log((string) $e);
+                $_SESSION['flash'] = ['fail' => 'Gagal memperbarui kendaraan.'];
+            }
+        }
+    }
+
+    private function handleDeleteVehicle(): void
+    {
+        $id = filter_var($_POST['vehicle_id'] ?? '', FILTER_VALIDATE_INT);
+
+        if (!$id || !$this->vehicles->exists($id)) {
+            $_SESSION['flash'] = ['fail' => 'Kendaraan tidak ditemukan.'];
+            return;
+        }
+
+        try {
+            $this->vehicles->delete($id);
+            $_SESSION['flash'] = ['ok' => 'Kendaraan berhasil dihapus.'];
+        } catch (PDOException $e) {
+            // Error 1451: Foreign Key Constraint Violation (punya riwayat transaksi)
+            if (($e->errorInfo[1] ?? 0) === 1451) {
+                $_SESSION['flash'] = ['fail' => 'Kendaraan tidak bisa dihapus karena masih memiliki riwayat catatan servis.'];
+            } else {
+                error_log((string) $e);
+                $_SESSION['flash'] = ['fail' => 'Gagal menghapus kendaraan.'];
+            }
+        }
     }
 
     private function handleSave(): void
@@ -512,7 +581,10 @@ $actions = static fn (array $r): string => sprintf(
             <h1 class="font-digit text-4xl font-extrabold leading-none sm:text-5xl group-hover:opacity-80 transition-opacity">Catatan servis</h1>
             <p class="mt-2 text-sm text-muted">Riwayat servis motor dan mobil</p>
         </a>
-        <button type="button" id="btn-add" class="<?= $btnPrimary ?>">Tambah</button>
+        <div class="flex gap-2">
+            <button type="button" id="btn-manage-vehicles" class="<?= $btnGhost ?>">Kendaraan</button>
+            <button type="button" id="btn-add" class="<?= $btnPrimary ?>">Tambah</button>
+        </div>
     </section>
 
     <?php if ($v['ok']): ?>
@@ -653,6 +725,8 @@ $actions = static fn (array $r): string => sprintf(
         <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
         <input type="hidden" name="action" value="save">
         <input type="hidden" name="id" value="<?= e($old['id']) ?>">
+        <!-- Input hidden untuk vehicle_id yang dikirim ke server -->
+        <input type="hidden" name="vehicle_id" id="vehicle_id" value="<?= e($old['vehicle_id']) ?>">
 
         <div class="flex items-center justify-between">
             <h2 id="modal-title" class="font-digit text-3xl font-extrabold leading-none"><?= $editing ? 'Ubah catatan servis' : 'Tambah catatan servis' ?></h2>
@@ -665,19 +739,29 @@ $actions = static fn (array $r): string => sprintf(
             <p role="alert" data-err class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800"><?= e($errors['form']) ?></p>
         <?php endif; ?>
 
-        <label class="block">
-            <span class="text-sm font-medium">Kendaraan</span>
-            <select name="vehicle_id" id="vehicle_id" required autofocus class="<?= $input ?>">
-                <option value="" disabled <?= $old['vehicle_id'] === '' ? 'selected' : '' ?>>Pilih kendaraan</option>
-                <?php foreach ($vehicles as $veh): ?>
-                    <option value="<?= (int) $veh['id'] ?>" <?= (string) $veh['id'] === $old['vehicle_id'] ? 'selected' : '' ?>>
-                        <?= e($veh['nopol']) ?> – <?= e($veh['type']) ?>
-                    </option>
-                <?php endforeach; ?>
-                <option value="new" <?= $old['vehicle_id'] === 'new' ? 'selected' : '' ?>>Kendaraan baru…</option>
-            </select>
-            <?= $fieldError('vehicle_id') ?>
-        </label>
+        <div>
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-medium">Kendaraan</span>
+                <?php if ($vehicles): ?>
+                    <button type="button" id="btn-toggle-vehicle" class="text-xs font-semibold text-lamp hover:underline focus:outline-none">
+                        + Kendaraan Baru
+                    </button>
+                <?php endif; ?>
+            </div>
+
+            <!-- Dropdown Kendaraan -->
+            <div id="select-vehicle-box" class="<?= $old['vehicle_id'] === 'new' ? 'hidden' : '' ?>">
+                <select id="vehicle_select" class="<?= $input ?>">
+                    <option value="" disabled <?= $old['vehicle_id'] === '' || $old['vehicle_id'] === 'new' ? 'selected' : '' ?>>Pilih kendaraan</option>
+                    <?php foreach ($vehicles as $veh): ?>
+                        <option value="<?= (int) $veh['id'] ?>" <?= (string) $veh['id'] === $old['vehicle_id'] ? 'selected' : '' ?>>
+                            <?= e($veh['nopol']) ?> – <?= e($veh['type']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <?= $fieldError('vehicle_id') ?>
+            </div>
+        </div>
 
         <fieldset id="new-vehicle" class="space-y-4 rounded-lg bg-paper p-3 <?= $old['vehicle_id'] === 'new' ? '' : 'hidden' ?>" <?= $old['vehicle_id'] === 'new' ? '' : 'disabled' ?>>
             <div class="grid grid-cols-2 gap-3">
@@ -735,6 +819,97 @@ $actions = static fn (array $r): string => sprintf(
     </form>
 </dialog>
 
+<!-- Modal Kelola Kendaraan -->
+<dialog id="modal-vehicles"
+        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-xl sm:rounded-2xl">
+    <div class="space-y-4 p-5">
+        <div class="flex items-center justify-between border-b border-line pb-3">
+            <h2 class="font-digit text-3xl font-extrabold leading-none">Daftar Kendaraan</h2>
+            <button type="button" data-close class="rounded-lg p-2 hover:bg-paper" aria-label="Tutup">
+                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
+            </button>
+        </div>
+
+        <?php if (!$vehicles): ?>
+            <p class="py-6 text-center text-sm text-muted">Belum ada data kendaraan.</p>
+        <?php else: ?>
+            <div class="max-h-80 overflow-y-auto divide-y divide-line pr-1">
+                <?php foreach ($vehicles as $veh): ?>
+                    <div class="flex items-center justify-between py-3 gap-3">
+                        <div>
+                            <p class="font-semibold text-base"><?= e($veh['nopol']) ?> <span class="ml-1 text-xs font-normal text-muted">(<?= e($veh['jenis']) ?>)</span></p>
+                            <p class="text-sm text-muted"><?= e($veh['type']) ?> · <span class="text-xs font-medium text-ink"><?= $veh['total_servis'] ?> servis</span></p>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <!-- Tombol Edit Kendaraan -->
+                            <button type="button" data-edit-veh
+                                    data-id="<?= $veh['id'] ?>"
+                                    data-nopol="<?= e($veh['nopol']) ?>"
+                                    data-jenis="<?= e($veh['jenis']) ?>"
+                                    data-type="<?= e($veh['type']) ?>"
+                                    class="<?= $btnEdit ?>">Ubah</button>
+
+                            <!-- Form Hapus Kendaraan (Disabled jika punya catatan servis) -->
+                            <?php if ($veh['total_servis'] == 0): ?>
+                                <form method="post" onsubmit="return confirm('Hapus kendaraan <?= e($veh['nopol']) ?>?');">
+                                    <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
+                                    <input type="hidden" name="action" value="delete_vehicle">
+                                    <input type="hidden" name="vehicle_id" value="<?= $veh['id'] ?>">
+                                    <button type="submit" class="<?= $btnDelete ?>">Hapus</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="px-2.5 py-2 text-xs text-muted/50 cursor-not-allowed" title="Tidak dapat dihapus karena ada catatan servis">Hapus</span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+</dialog>
+
+<!-- Modal Sub-Edit Kendaraan -->
+<dialog id="modal-edit-vehicle"
+        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-md sm:rounded-2xl">
+    <form method="post" id="form-edit-veh" class="space-y-4 p-5">
+        <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
+        <input type="hidden" name="action" value="save_vehicle">
+        <input type="hidden" name="vehicle_id" id="edit-veh-id" value="">
+
+        <div class="flex items-center justify-between">
+            <h2 class="font-digit text-3xl font-extrabold leading-none">Ubah Data Kendaraan</h2>
+            <button type="button" data-close class="rounded-lg p-2 hover:bg-paper" aria-label="Tutup">
+                <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
+            </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+                <span class="text-sm font-medium">Jenis</span>
+                <select name="jenis" id="edit-veh-jenis" required class="<?= $input ?>">
+                    <?php foreach (JENIS_KENDARAAN as $j): ?>
+                        <option value="<?= e($j) ?>"><?= e($j) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium">Nopol</span>
+                <input type="text" name="nopol" id="edit-veh-nopol" required maxlength="15" class="<?= $input ?> uppercase">
+            </label>
+        </div>
+
+        <label class="block">
+            <span class="text-sm font-medium">Tipe</span>
+            <input type="text" name="type" id="edit-veh-type" required maxlength="100" class="<?= $input ?>">
+        </label>
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-close class="<?= $btnGhost ?>">Batal</button>
+            <button type="submit" class="<?= $btnPrimary ?>">Simpan</button>
+        </div>
+    </form>
+</dialog>
+
 <!-- Konfirmasi hapus -->
 <dialog id="confirm"
         class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-md sm:rounded-2xl">
@@ -755,24 +930,71 @@ $actions = static fn (array $r): string => sprintf(
     const dlg = document.getElementById('modal');
     const confirmDlg = document.getElementById('confirm');
     const form = document.getElementById('form');
-    const sel = form.elements['vehicle_id'];
-    const box = document.getElementById('new-vehicle');
-    const hasVehicles = sel.options.length > 2; // placeholder + "Kendaraan baru" + daftar kendaraan
 
-    const sync = () => {
-        const isNew = sel.value === 'new';
-        box.classList.toggle('hidden', !isNew);
-        box.disabled = !isNew; // field yang disabled tidak divalidasi dan tidak dikirim
+    const hiddenVehicleId = document.getElementById('vehicle_id');
+    const vehicleSelect = document.getElementById('vehicle_select');
+    const selectBox = document.getElementById('select-vehicle-box');
+    const newVehicleBox = document.getElementById('new-vehicle');
+    const btnToggle = document.getElementById('btn-toggle-vehicle');
+
+    const hasVehicles = vehicleSelect ? vehicleSelect.options.length > 1 : false;
+    let isNewMode = hiddenVehicleId.value === 'new' || !hasVehicles;
+
+    const syncVehicleUI = () => {
+        if (isNewMode) {
+            hiddenVehicleId.value = 'new';
+            if (selectBox) selectBox.classList.add('hidden');
+            if (vehicleSelect) vehicleSelect.removeAttribute('required');
+
+            newVehicleBox.classList.remove('hidden');
+            newVehicleBox.removeAttribute('disabled');
+
+            if (btnToggle) btnToggle.textContent = '← Pilih dari daftar';
+        } else {
+            hiddenVehicleId.value = vehicleSelect ? vehicleSelect.value : '';
+            if (selectBox) selectBox.classList.remove('hidden');
+            if (vehicleSelect) vehicleSelect.setAttribute('required', 'required');
+
+            newVehicleBox.classList.add('hidden');
+            newVehicleBox.setAttribute('disabled', 'disabled');
+
+            if (btnToggle) btnToggle.textContent = '+ Kendaraan Baru';
+        }
     };
-    sel.addEventListener('change', sync);
-    sync();
+
+    if (vehicleSelect) {
+        vehicleSelect.addEventListener('change', () => {
+            hiddenVehicleId.value = vehicleSelect.value;
+        });
+    }
+
+    btnToggle?.addEventListener('click', () => {
+        isNewMode = !isNewMode;
+        syncVehicleUI();
+        if (isNewMode) {
+            form.elements['nopol']?.focus();
+        } else {
+            vehicleSelect?.focus();
+        }
+    });
 
     // Satu modal untuk tambah dan ubah: tanpa data = tambah, dengan data = ubah.
     const openForm = (d = {}) => {
         dlg.querySelectorAll('[data-err]').forEach((n) => n.remove());
         const editing = Boolean(d.id);
+
         form.elements['id'].value = d.id ?? '';
-        sel.value = d.vehicle ?? (hasVehicles ? '' : 'new');
+
+        if (editing || d.vehicle) {
+            isNewMode = false;
+            if (vehicleSelect) vehicleSelect.value = d.vehicle ?? '';
+            hiddenVehicleId.value = d.vehicle ?? '';
+        } else {
+            isNewMode = !hasVehicles;
+            if (vehicleSelect) vehicleSelect.value = '';
+            hiddenVehicleId.value = hasVehicles ? '' : 'new';
+        }
+
         form.elements['jenis'].selectedIndex = 0;
         form.elements['type'].value = '';
         form.elements['nopol'].value = '';
@@ -780,9 +1002,11 @@ $actions = static fn (array $r): string => sprintf(
         form.elements['spidometer'].value = d.km ?? '';
         form.elements['nominal'].value = d.nominal ?? '';
         form.elements['note'].value = d.note ?? '';
+
         document.getElementById('modal-title').textContent = editing ? 'Ubah catatan servis' : 'Tambah catatan servis';
         document.getElementById('modal-submit').textContent = editing ? 'Simpan perubahan' : 'Simpan catatan';
-        sync();
+
+        syncVehicleUI();
         dlg.showModal();
     };
 
@@ -799,7 +1023,32 @@ $actions = static fn (array $r): string => sprintf(
         d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); });
     });
 
-    if (dlg.dataset.open) dlg.showModal(); // ada error validasi: buka lagi dengan isian sebelumnya
+    if (dlg.dataset.open) {
+        syncVehicleUI();
+        dlg.showModal();
+    }
+
+    // JS Trigger Modal Kelola Kendaraan
+    const vehModal = document.getElementById('modal-vehicles');
+    const editVehModal = document.getElementById('modal-edit-vehicle');
+
+    document.getElementById('btn-manage-vehicles')?.addEventListener('click', () => {
+        vehModal.showModal();
+    });
+
+    // Handling Klik Tombol "Ubah" Kendaraan
+    document.querySelectorAll('[data-edit-veh]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const d = btn.dataset;
+            document.getElementById('edit-veh-id').value = d.id;
+            document.getElementById('edit-veh-nopol').value = d.nopol;
+            document.getElementById('edit-veh-jenis').value = d.jenis;
+            document.getElementById('edit-veh-type').value = d.type;
+
+            vehModal.close();
+            editVehModal.showModal();
+        });
+    });
 </script>
 </body>
 </html>
