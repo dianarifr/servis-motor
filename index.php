@@ -576,14 +576,14 @@ $actions = static fn (array $r): string => sprintf(
 <main class="mx-auto max-w-5xl px-4 py-6 sm:py-10">
 
     <!-- Bagian 1: judul + tombol tambah -->
-    <section class="flex items-end justify-between gap-4">
+    <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <a href="?" class="group block">
             <h1 class="font-digit text-4xl font-extrabold leading-none sm:text-5xl group-hover:opacity-80 transition-opacity">Catatan servis</h1>
             <p class="mt-2 text-sm text-muted">Riwayat servis motor dan mobil</p>
         </a>
-        <div class="flex gap-2">
-            <button type="button" id="btn-manage-vehicles" class="<?= $btnGhost ?>">Kendaraan</button>
-            <button type="button" id="btn-add" class="<?= $btnPrimary ?>">Tambah</button>
+        <div class="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <button type="button" id="btn-manage-vehicles" class="<?= $btnGhost ?> w-full sm:w-auto">Kendaraan</button>
+            <button type="button" id="btn-add" class="<?= $btnPrimary ?> w-full sm:w-auto">Tambah</button>
         </div>
     </section>
 
