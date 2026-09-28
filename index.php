@@ -498,10 +498,10 @@ $actions = static fn (array $r): string => sprintf(
 
     <!-- Bagian 1: judul + tombol tambah -->
     <section class="flex items-end justify-between gap-4">
-        <div>
-            <h1 class="font-digit text-4xl font-extrabold leading-none sm:text-5xl">Catatan servis</h1>
+        <a href="?" class="group block">
+            <h1 class="font-digit text-4xl font-extrabold leading-none sm:text-5xl group-hover:opacity-80 transition-opacity">Catatan servis</h1>
             <p class="mt-2 text-sm text-muted">Riwayat servis motor dan mobil</p>
-        </div>
+        </a>
         <button type="button" id="btn-add" class="<?= $btnPrimary ?>">Tambah</button>
     </section>
 
