@@ -86,7 +86,7 @@ final class Security
         header('Referrer-Policy: same-origin');
         header(sprintf(
             "Content-Security-Policy: default-src 'self'; script-src 'nonce-%s' https://cdn.tailwindcss.com; "
-            . "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+            . "style-src 'self' 'unsafe-inline'; "
             . "img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
             $this->nonce,
         ));
@@ -523,22 +523,22 @@ $editing = $old['id'] !== '';
 
 $pageUrl = static fn (int $p): string => '?' . http_build_query($filter->toArray() + ($p > 1 ? ['page' => $p] : []));
 
-$input = 'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-base focus:border-ink focus:outline-none focus:ring-2 focus:ring-lamp';
-$btnPrimary = 'inline-flex items-center justify-center rounded-lg bg-lamp px-5 py-2.5 font-semibold text-ink hover:bg-[#f3b51c] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
-$btnGhost = 'inline-flex items-center justify-center rounded-lg border border-line bg-white px-4 py-2.5 font-medium hover:bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink';
+$input = 'mt-1 w-full border border-line-strong bg-surface px-3 py-2.5 text-base text-ink placeholder:text-muted focus:border-ink-soft focus:outline-none focus:ring-2 focus:ring-focus';
+$btnPrimary = 'inline-flex items-center justify-center border border-accent bg-accent px-5 py-2.5 font-medium text-accent-ink hover:border-accent-hover hover:bg-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
+$btnGhost = 'inline-flex items-center justify-center border border-line-strong bg-surface px-4 py-2.5 font-medium text-ink hover:border-ink-soft hover:bg-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus';
 $fieldError = static fn (string $k): string => isset($errors[$k])
-    ? '<p data-err class="mt-1 text-sm text-red-700">' . e($errors[$k]) . '</p>'
+    ? '<p data-err class="mt-1 text-sm text-danger">' . e($errors[$k]) . '</p>'
     : '';
 $odo = static fn (int $km): string => sprintf(
-    '<span class="inline-flex items-baseline gap-1 whitespace-nowrap rounded-md border border-lamp/30 bg-dash px-2.5 py-1 font-digit text-xl font-extrabold tabular-nums tracking-wide text-lamp shadow-[0_0_10px_rgba(232,164,0,0.15)]">'
-    . '%s<span class="font-sans text-xs font-bold text-lamp/70">km</span>'
+    '<span class="inline-flex items-baseline gap-1 whitespace-nowrap border border-line bg-surface-alt px-2.5 py-1 font-mono text-base font-semibold tabular-nums tracking-wide text-ink">'
+    . '%s<span class="font-sans text-[11px] font-medium text-muted">km</span>'
     . '</span>',
     number_format($km, 0, ',', '.')
 );
 $rupiah = static fn (int $n): string => 'Rp' . number_format($n, 0, ',', '.');
-$btnEdit = 'rounded-md px-2.5 py-2 text-sm font-medium hover:bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink';
-$btnDelete = 'rounded-md px-2.5 py-2 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-700';
-$btnDanger = 'inline-flex items-center justify-center rounded-lg bg-red-700 px-5 py-2.5 font-semibold text-white hover:bg-red-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700';
+$btnEdit = 'px-2.5 py-2 text-sm font-medium text-ink hover:bg-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus';
+$btnDelete = 'px-2.5 py-2 text-sm font-medium text-danger hover:bg-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-danger';
+$btnDanger = 'inline-flex items-center justify-center border border-danger bg-danger px-5 py-2.5 font-medium text-accent-ink hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger';
 $actions = static fn (array $r): string => sprintf(
     '<div class="flex gap-1">'
     . '<button type="button" data-edit data-id="%d" data-vehicle="%d" data-date="%s" data-km="%d" data-nominal="%d" data-note="%s" class="%s">Ubah</button>'
@@ -548,66 +548,143 @@ $actions = static fn (array $r): string => sprintf(
 );
 ?>
 <!doctype html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title>Catatan Servis Kendaraan</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Big+Shoulders+Display:wght@600;800&display=swap" rel="stylesheet">
+    <script nonce="<?= e($security->nonce) ?>">
+        // Tema dipilih sebelum paint supaya tidak ada kedip.
+        (function () {
+            try {
+                var saved = localStorage.getItem('servis.theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.dataset.theme = saved;
+                } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.dataset.theme = 'dark';
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script nonce="<?= e($security->nonce) ?>" src="https://cdn.tailwindcss.com"></script>
     <script nonce="<?= e($security->nonce) ?>">
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Archivo', 'system-ui', 'sans-serif'],
-                        digit: ['"Big Shoulders Display"', 'Impact', 'sans-serif'],
+                        sans: ['system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'Arial', 'sans-serif'],
+                        serif: ['ui-serif', 'Georgia', '"Iowan Old Style"', '"Times New Roman"', 'serif'],
+                        mono: ['ui-monospace', '"SFMono-Regular"', 'Menlo', 'Consolas', 'monospace'],
                     },
-                    colors: { ink: '#12202B', muted: '#5B6B77', line: '#CBD3D9', paper: '#E9ECEE', lamp: '#E8A400', dash: '#0F1A22' },
+                    borderRadius: {
+                        DEFAULT: '2px',
+                        sm: '2px',
+                        md: '2px',
+                        lg: '2px',
+                        xl: '2px',
+                        '2xl': '2px',
+                        full: '9999px',
+                    },
+                    colors: {
+                        paper: 'var(--paper)',
+                        surface: 'var(--surface)',
+                        'surface-alt': 'var(--surface-alt)',
+                        ink: 'var(--ink)',
+                        'ink-soft': 'var(--ink-soft)',
+                        muted: 'var(--muted)',
+                        line: 'var(--line)',
+                        'line-strong': 'var(--line-strong)',
+                        accent: 'var(--accent)',
+                        'accent-hover': 'var(--accent-hover)',
+                        'accent-ink': 'var(--accent-ink)',
+                        focus: 'var(--focus)',
+                        danger: 'var(--danger)',
+                    },
+                    boxShadow: {
+                        panel: '0 1px 0 var(--line), 0 8px 24px -18px rgba(23, 21, 15, 0.55)',
+                    },
                 },
             },
         };
     </script>
-    <style>body:has(dialog[open]) { overflow: hidden; }</style>
+    <style>
+        :root {
+            color-scheme: light;
+            --paper: #f6f3ec;
+            --surface: #fffdf8;
+            --surface-alt: #efeae0;
+            --ink: #17150f;
+            --ink-soft: #3d382e;
+            --muted: #6a6152;
+            --line: #d9d2c2;
+            --line-strong: #b9b0a0;
+            --accent: #a83c1d;
+            --accent-hover: #8d3016;
+            --accent-ink: #fffdf8;
+            --focus: #1f5f8b;
+            --danger: #8f2413;
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --paper: #14130f;
+            --surface: #1c1a15;
+            --surface-alt: #24211a;
+            --ink: #ece6d8;
+            --ink-soft: #cdc5b3;
+            --muted: #9c9382;
+            --line: #37322a;
+            --line-strong: #4d4739;
+            --accent: #e47a4b;
+            --accent-hover: #f08a5c;
+            --accent-ink: #1a1813;
+            --focus: #7fb8dd;
+            --danger: #e88470;
+        }
+
+        body:has(dialog[open]) { overflow: hidden; }
+
+        input, select, textarea { color-scheme: inherit; }
+    </style>
 </head>
 <body class="min-h-screen bg-paper font-sans text-ink antialiased">
 <main class="mx-auto max-w-5xl px-4 py-6 sm:py-10">
 
     <!-- Bagian 1: judul + tombol tambah -->
-    <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <header class="flex flex-col gap-4 border-b border-line pb-4 sm:flex-row sm:items-end sm:justify-between">
         <a href="?" class="group block">
-            <h1 class="font-digit text-4xl font-extrabold leading-none sm:text-5xl group-hover:opacity-80 transition-opacity">Catatan servis</h1>
-            <p class="mt-2 text-sm text-muted">Riwayat servis motor dan mobil</p>
+            <h1 class="font-serif text-2xl font-semibold leading-none tracking-tight sm:text-3xl">Catatan servis</h1>
+            <p class="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Riwayat servis motor dan mobil</p>
         </a>
-        <div class="grid grid-cols-2 gap-2 sm:flex sm:w-auto">
+        <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:w-auto">
+            <button type="button" id="theme-toggle" class="<?= $btnGhost ?> col-span-2 w-full sm:col-span-1 sm:w-auto">Tema gelap</button>
             <button type="button" id="btn-manage-vehicles" class="<?= $btnGhost ?> w-full sm:w-auto">Kendaraan</button>
             <button type="button" id="btn-add" class="<?= $btnPrimary ?> w-full sm:w-auto">Tambah</button>
         </div>
-    </section>
+    </header>
 
     <?php if ($v['ok']): ?>
-        <p role="status" class="mt-5 rounded-lg border-l-4 border-lamp bg-white px-4 py-3 text-sm"><?= e($v['ok']) ?></p>
+        <p role="status" class="mt-5 border-l-4 border-accent bg-surface px-4 py-3 text-sm text-ink-soft"><?= e($v['ok']) ?></p>
     <?php endif; ?>
     <?php if ($v['fail']): ?>
-        <p role="alert" class="mt-5 rounded-lg border-l-4 border-red-700 bg-white px-4 py-3 text-sm text-red-800"><?= e($v['fail']) ?></p>
+        <p role="alert" class="mt-5 border-l-4 border-danger bg-surface px-4 py-3 text-sm text-danger"><?= e($v['fail']) ?></p>
     <?php endif; ?>
 
     <!-- Bagian 2: filter + tabel -->
-    <section class="mt-6 overflow-hidden rounded-xl border border-line bg-white">
+    <section class="mt-6 overflow-hidden border border-line bg-surface">
         <form method="get" class="grid gap-3 border-b border-line p-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
             <label class="block">
-                <span class="text-sm font-medium">Cari</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Cari</span>
                 <input type="search" name="q" value="<?= e($filter->q) ?>" maxlength="100" placeholder="Nopol, tipe, atau catatan" class="<?= $input ?>">
             </label>
             <div class="grid grid-cols-2 gap-3 sm:contents">
                 <label class="block">
-                    <span class="text-sm font-medium">Dari tanggal</span>
+                    <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Dari tanggal</span>
                     <input type="date" name="from" value="<?= e($filter->from) ?>" class="<?= $input ?>">
                 </label>
                 <label class="block">
-                    <span class="text-sm font-medium">Sampai tanggal</span>
+                    <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Sampai tanggal</span>
                     <input type="date" name="to" value="<?= e($filter->to) ?>" class="<?= $input ?>">
                 </label>
             </div>
@@ -637,7 +714,7 @@ $actions = static fn (array $r): string => sprintf(
                             </div>
                             <?= $odo((int) $r['spidometer']) ?>
                         </div>
-                        <p class="mt-2 text-sm text-muted"><?= e(tgl($r['date'])) ?> · <?= $rupiah((int) $r['nominal']) ?></p>
+                        <p class="mt-2 font-mono text-[12px] tabular-nums text-muted"><?= e(tgl($r['date'])) ?> · <?= $rupiah((int) $r['nominal']) ?></p>
                         <?php if ($r['note']): ?>
                             <p class="mt-1 whitespace-pre-line break-words text-sm"><?= e($r['note']) ?></p>
                         <?php endif; ?>
@@ -649,7 +726,7 @@ $actions = static fn (array $r): string => sprintf(
             <!-- Desktop: tabel -->
             <div class="hidden overflow-x-auto md:block">
                 <table class="w-full text-left text-sm">
-                    <thead class="border-b border-line text-muted">
+                    <thead class="border-b border-line font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
                     <tr>
                         <th class="px-4 py-3 font-medium">Tanggal</th>
                         <th class="px-4 py-3 font-medium">Nopol</th>
@@ -662,12 +739,12 @@ $actions = static fn (array $r): string => sprintf(
                     </thead>
                     <tbody class="divide-y divide-line">
                     <?php foreach ($rows as $r): ?>
-                        <tr class="align-top">
-                            <td class="whitespace-nowrap px-4 py-3"><?= e(tgl($r['date'])) ?></td>
+                        <tr class="align-top transition-colors hover:bg-surface-alt">
+                            <td class="whitespace-nowrap px-4 py-3 font-mono text-[13px] tabular-nums"><?= e(tgl($r['date'])) ?></td>
                             <td class="whitespace-nowrap px-4 py-3 font-semibold"><?= e($r['nopol']) ?></td>
                             <td class="px-4 py-3"><?= e($r['jenis']) ?> - <?= e($r['type']) ?></td>
                             <td class="px-4 py-3 text-right"><?= $odo((int) $r['spidometer']) ?></td>
-                            <td class="whitespace-nowrap px-4 py-3 text-right"><?= $rupiah((int) $r['nominal']) ?></td>
+                            <td class="whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums"><?= $rupiah((int) $r['nominal']) ?></td>
                             <td class="max-w-xs whitespace-pre-line break-words px-4 py-3"><?= e($r['note']) ?></td>
                             <td class="whitespace-nowrap px-4 py-3 text-right"><?= $actions($r) ?></td>
                         </tr>
@@ -677,7 +754,7 @@ $actions = static fn (array $r): string => sprintf(
             </div>
 
             <nav class="flex flex-col items-center justify-between gap-3 border-t border-line p-4 text-sm sm:flex-row" aria-label="Halaman">
-                <p class="text-muted"><?= $v['from'] ?>–<?= $v['to'] ?> dari <?= $v['total'] ?></p>
+                <p class="font-mono text-[12px] tabular-nums text-muted"><?= $v['from'] ?>–<?= $v['to'] ?> dari <?= $v['total'] ?></p>
 
                 <?php if ($v['pages'] > 1): ?>
                     <?php
@@ -686,7 +763,7 @@ $actions = static fn (array $r): string => sprintf(
                     <ul class="flex flex-wrap items-center justify-center gap-1">
                         <li>
                             <?php if ($v['page'] > 1): ?>
-                                <a href="<?= e($pageUrl($v['page'] - 1)) ?>" aria-label="Halaman sebelumnya" class="<?= $pgBtn ?> border border-line bg-white hover:bg-paper">&lsaquo;</a>
+                                <a href="<?= e($pageUrl($v['page'] - 1)) ?>" aria-label="Halaman sebelumnya" class="<?= $pgBtn ?> border border-line bg-surface hover:bg-surface-alt">&lsaquo;</a>
                             <?php else: ?>
                                 <span class="<?= $pgBtn ?> border border-line text-muted opacity-40">&lsaquo;</span>
                             <?php endif; ?>
@@ -697,16 +774,16 @@ $actions = static fn (array $r): string => sprintf(
                                 <?php if ($n === null): ?>
                                     <span class="px-1 text-muted">&hellip;</span>
                                 <?php elseif ($n === $v['page']): ?>
-                                    <span aria-current="page" class="<?= $pgBtn ?> bg-ink font-semibold text-white"><?= $n ?></span>
+                                    <span aria-current="page" class="<?= $pgBtn ?> border border-ink bg-ink font-semibold text-paper"><?= $n ?></span>
                                 <?php else: ?>
-                                    <a href="<?= e($pageUrl($n)) ?>" aria-label="Halaman <?= $n ?>" class="<?= $pgBtn ?> border border-line bg-white hover:bg-paper"><?= $n ?></a>
+                                    <a href="<?= e($pageUrl($n)) ?>" aria-label="Halaman <?= $n ?>" class="<?= $pgBtn ?> border border-line bg-surface hover:bg-surface-alt"><?= $n ?></a>
                                 <?php endif; ?>
                             </li>
                         <?php endforeach; ?>
 
                         <li>
                             <?php if ($v['page'] < $v['pages']): ?>
-                                <a href="<?= e($pageUrl($v['page'] + 1)) ?>" aria-label="Halaman berikutnya" class="<?= $pgBtn ?> border border-line bg-white hover:bg-paper">&rsaquo;</a>
+                                <a href="<?= e($pageUrl($v['page'] + 1)) ?>" aria-label="Halaman berikutnya" class="<?= $pgBtn ?> border border-line bg-surface hover:bg-surface-alt">&rsaquo;</a>
                             <?php else: ?>
                                 <span class="<?= $pgBtn ?> border border-line text-muted opacity-40">&rsaquo;</span>
                             <?php endif; ?>
@@ -720,7 +797,7 @@ $actions = static fn (array $r): string => sprintf(
 
 <!-- Modal tambah catatan -->
 <dialog id="modal" data-today="<?= date('Y-m-d') ?>" <?= $errors ? 'data-open="1"' : '' ?>
-        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-lg sm:rounded-2xl">
+        class="m-0 mt-auto w-full max-w-full border border-line bg-surface p-0 text-ink shadow-panel backdrop:bg-black/50 sm:m-auto sm:max-w-lg sm:rounded-2xl">
     <form method="post" id="form" class="space-y-4 p-5">
         <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
         <input type="hidden" name="action" value="save">
@@ -729,21 +806,21 @@ $actions = static fn (array $r): string => sprintf(
         <input type="hidden" name="vehicle_id" id="vehicle_id" value="<?= e($old['vehicle_id']) ?>">
 
         <div class="flex items-center justify-between">
-            <h2 id="modal-title" class="font-digit text-3xl font-extrabold leading-none"><?= $editing ? 'Ubah catatan servis' : 'Tambah catatan servis' ?></h2>
-            <button type="button" data-close class="rounded-lg p-2 hover:bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink" aria-label="Tutup">
+            <h2 id="modal-title" class="font-serif text-xl font-semibold leading-tight tracking-tight"><?= $editing ? 'Ubah catatan servis' : 'Tambah catatan servis' ?></h2>
+            <button type="button" data-close class="p-2 hover:bg-surface-alt focus-visible:outline focus-visible:outline-2 focus-visible:outline-ink" aria-label="Tutup">
                 <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg>
             </button>
         </div>
 
         <?php if (isset($errors['form'])): ?>
-            <p role="alert" data-err class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800"><?= e($errors['form']) ?></p>
+            <p role="alert" data-err class="border-l-4 border-danger bg-surface-alt px-3 py-2 text-sm text-danger"><?= e($errors['form']) ?></p>
         <?php endif; ?>
 
         <div>
             <div class="flex items-center justify-between mb-1">
-                <span class="text-sm font-medium">Kendaraan</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Kendaraan</span>
                 <?php if ($vehicles): ?>
-                    <button type="button" id="btn-toggle-vehicle" class="text-xs font-semibold text-lamp hover:underline focus:outline-none">
+                    <button type="button" id="btn-toggle-vehicle" class="text-xs font-semibold text-accent hover:underline focus:outline-none">
                         + Kendaraan Baru
                     </button>
                 <?php endif; ?>
@@ -766,7 +843,7 @@ $actions = static fn (array $r): string => sprintf(
         <fieldset id="new-vehicle" class="space-y-4 rounded-lg bg-paper p-3 <?= $old['vehicle_id'] === 'new' ? '' : 'hidden' ?>" <?= $old['vehicle_id'] === 'new' ? '' : 'disabled' ?>>
             <div class="grid grid-cols-2 gap-3">
                 <label class="block">
-                    <span class="text-sm font-medium">Jenis</span>
+                    <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Jenis</span>
                     <select name="jenis" required class="<?= $input ?>">
                         <?php foreach (JENIS_KENDARAAN as $jenis): ?>
                             <option value="<?= e($jenis) ?>" <?= $old['jenis'] === $jenis ? 'selected' : '' ?>><?= e($jenis) ?></option>
@@ -775,13 +852,13 @@ $actions = static fn (array $r): string => sprintf(
                     <?= $fieldError('jenis') ?>
                 </label>
                 <label class="block">
-                    <span class="text-sm font-medium">Nopol</span>
+                    <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Nopol</span>
                     <input type="text" name="nopol" value="<?= e($old['nopol'] ?? '') ?>" required maxlength="15" autocapitalize="characters" autocomplete="off" placeholder="L 1234 AB" class="<?= $input ?> uppercase">
                     <?= $fieldError('nopol') ?>
                 </label>
             </div>
             <label class="block">
-                <span class="text-sm font-medium">Tipe</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Tipe</span>
                 <input type="text" name="type" value="<?= e($old['type'] ?? '') ?>" required maxlength="100" placeholder="Honda Beat 2021" class="<?= $input ?>">
                 <?= $fieldError('type') ?>
             </label>
@@ -789,25 +866,25 @@ $actions = static fn (array $r): string => sprintf(
 
         <div class="grid grid-cols-2 gap-3">
             <label class="block">
-                <span class="text-sm font-medium">Tanggal servis</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Tanggal servis</span>
                 <input type="date" name="date" value="<?= e($old['date']) ?>" max="<?= date('Y-m-d') ?>" required class="<?= $input ?>">
                 <?= $fieldError('date') ?>
             </label>
             <label class="block">
-                <span class="text-sm font-medium">Spidometer (km)</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Spidometer (km)</span>
                 <input type="number" name="spidometer" value="<?= e($old['spidometer'] ?? '') ?>" min="0" max="9999999" step="1" inputmode="numeric" required placeholder="24500" class="<?= $input ?>">
                 <?= $fieldError('spidometer') ?>
             </label>
         </div>
 
         <label class="block">
-            <span class="text-sm font-medium">Nominal (Rp)</span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Nominal (Rp)</span>
             <input type="number" name="nominal" value="<?= e($old['nominal'] ?? '') ?>" min="0" max="999999999" step="1" inputmode="numeric" required placeholder="150000" class="<?= $input ?>">
             <?= $fieldError('nominal') ?>
         </label>
 
         <label class="block">
-            <span class="text-sm font-medium">Catatan</span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Catatan</span>
             <textarea name="note" rows="3" maxlength="500" placeholder="Ganti oli, kampas rem depan…" class="<?= $input ?>"><?= e($old['note'] ?? '') ?></textarea>
             <?= $fieldError('note') ?>
         </label>
@@ -821,11 +898,11 @@ $actions = static fn (array $r): string => sprintf(
 
 <!-- Modal Kelola Kendaraan -->
 <dialog id="modal-vehicles"
-        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-xl sm:rounded-2xl">
+        class="m-0 mt-auto w-full max-w-full border border-line bg-surface p-0 text-ink shadow-panel backdrop:bg-black/50 sm:m-auto sm:max-w-xl sm:rounded-2xl">
     <div class="space-y-4 p-5">
         <div class="flex items-center justify-between border-b border-line pb-3">
-            <h2 class="font-digit text-3xl font-extrabold leading-none">Daftar Kendaraan</h2>
-            <button type="button" data-close class="rounded-lg p-2 hover:bg-paper" aria-label="Tutup">
+            <h2 class="font-serif text-xl font-semibold leading-tight tracking-tight">Daftar Kendaraan</h2>
+            <button type="button" data-close class="p-2 hover:bg-surface-alt" aria-label="Tutup">
                 <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
             </button>
         </div>
@@ -837,7 +914,7 @@ $actions = static fn (array $r): string => sprintf(
                 <?php foreach ($vehicles as $veh): ?>
                     <div class="flex items-center justify-between py-3 gap-3">
                         <div>
-                            <p class="font-semibold text-base"><?= e($veh['nopol']) ?> <span class="ml-1 text-xs font-normal text-muted">(<?= e($veh['jenis']) ?>)</span></p>
+                            <p class="font-semibold text-base"><?= e($veh['nopol']) ?> <span class="ml-1 font-mono text-[11px] font-normal text-muted">(<?= e($veh['jenis']) ?>)</span></p>
                             <p class="text-sm text-muted"><?= e($veh['type']) ?> · <span class="text-xs font-medium text-ink"><?= $veh['total_servis'] ?> servis</span></p>
                         </div>
                         <div class="flex items-center gap-1">
@@ -858,7 +935,7 @@ $actions = static fn (array $r): string => sprintf(
                                     <button type="submit" class="<?= $btnDelete ?>">Hapus</button>
                                 </form>
                             <?php else: ?>
-                                <span class="px-2.5 py-2 text-xs text-muted/50 cursor-not-allowed" title="Tidak dapat dihapus karena ada catatan servis">Hapus</span>
+                                <span class="px-2.5 py-2 text-xs text-muted opacity-50 cursor-not-allowed" title="Tidak dapat dihapus karena ada catatan servis">Hapus</span>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -870,22 +947,22 @@ $actions = static fn (array $r): string => sprintf(
 
 <!-- Modal Sub-Edit Kendaraan -->
 <dialog id="modal-edit-vehicle"
-        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-md sm:rounded-2xl">
+        class="m-0 mt-auto w-full max-w-full border border-line bg-surface p-0 text-ink shadow-panel backdrop:bg-black/50 sm:m-auto sm:max-w-md sm:rounded-2xl">
     <form method="post" id="form-edit-veh" class="space-y-4 p-5">
         <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
         <input type="hidden" name="action" value="save_vehicle">
         <input type="hidden" name="vehicle_id" id="edit-veh-id" value="">
 
         <div class="flex items-center justify-between">
-            <h2 class="font-digit text-3xl font-extrabold leading-none">Ubah Data Kendaraan</h2>
-            <button type="button" data-close class="rounded-lg p-2 hover:bg-paper" aria-label="Tutup">
+            <h2 class="font-serif text-xl font-semibold leading-tight tracking-tight">Ubah Data Kendaraan</h2>
+            <button type="button" data-close class="p-2 hover:bg-surface-alt" aria-label="Tutup">
                 <svg class="h-5 w-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l10 10M15 5L5 15"/></svg>
             </button>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
             <label class="block">
-                <span class="text-sm font-medium">Jenis</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Jenis</span>
                 <select name="jenis" id="edit-veh-jenis" required class="<?= $input ?>">
                     <?php foreach (JENIS_KENDARAAN as $j): ?>
                         <option value="<?= e($j) ?>"><?= e($j) ?></option>
@@ -893,13 +970,13 @@ $actions = static fn (array $r): string => sprintf(
                 </select>
             </label>
             <label class="block">
-                <span class="text-sm font-medium">Nopol</span>
+                <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Nopol</span>
                 <input type="text" name="nopol" id="edit-veh-nopol" required maxlength="15" class="<?= $input ?> uppercase">
             </label>
         </div>
 
         <label class="block">
-            <span class="text-sm font-medium">Tipe</span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.12em] text-muted">Tipe</span>
             <input type="text" name="type" id="edit-veh-type" required maxlength="100" class="<?= $input ?>">
         </label>
 
@@ -912,12 +989,12 @@ $actions = static fn (array $r): string => sprintf(
 
 <!-- Konfirmasi hapus -->
 <dialog id="confirm"
-        class="m-0 mt-auto w-full max-w-full rounded-t-2xl bg-white p-0 text-ink shadow-xl backdrop:bg-ink/60 sm:m-auto sm:max-w-md sm:rounded-2xl">
+        class="m-0 mt-auto w-full max-w-full border border-line bg-surface p-0 text-ink shadow-panel backdrop:bg-black/50 sm:m-auto sm:max-w-md sm:rounded-2xl">
     <form method="post" class="space-y-4 p-5">
         <input type="hidden" name="csrf" value="<?= e($security->csrfToken()) ?>">
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="id" id="del-id" value="">
-        <h2 class="font-digit text-3xl font-extrabold leading-none">Hapus catatan servis?</h2>
+        <h2 class="font-serif text-xl font-semibold leading-tight tracking-tight">Hapus catatan servis?</h2>
         <p class="text-sm text-muted">Catatan <strong id="del-label" class="font-semibold text-ink"></strong> akan dihapus permanen. Data kendaraan tetap tersimpan.</p>
         <div class="flex justify-end gap-2">
             <button type="button" data-close class="<?= $btnGhost ?>">Batal</button>
@@ -1048,6 +1125,25 @@ $actions = static fn (array $r): string => sprintf(
             vehModal.close();
             editVehModal.showModal();
         });
+    });
+
+    // ---------- tema ----------
+    const themeToggle = document.getElementById('theme-toggle');
+
+    const syncThemeButton = () => {
+        if (!themeToggle) return;
+        const dark = document.documentElement.dataset.theme === 'dark';
+        themeToggle.textContent = dark ? 'Tema terang' : 'Tema gelap';
+        themeToggle.setAttribute('aria-pressed', dark ? 'true' : 'false');
+    };
+
+    syncThemeButton();
+
+    themeToggle?.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('servis.theme', next); } catch (e) {}
+        syncThemeButton();
     });
 </script>
 </body>
